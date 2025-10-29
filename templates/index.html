@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>🎙️ AirVoz Voice Browser</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111936; --muted:#97a1c1; --text:#eaf0ff; --brand:#6b9bff; --accent:#71edb8;
+      --danger:#ff6b6b; --warning:#ffd166; --shadow:0 10px 30px rgba(0,0,0,.35);
+      --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif;background:linear-gradient(180deg,#0b1020,#0e1530 35%,#0b1020);}
+    .container{max-width:1200px;margin:40px auto;padding:0 16px}
+    .card{background:linear-gradient(180deg,#121a37,#0f1631);border:1px solid #1b254d;border-radius:var(--radius);box-shadow:var(--shadow)}
+    header.card{padding:22px 20px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+    h1{margin:0;font-size:20px;color:var(--text);letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:13px}
+    .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    select,button{
+      appearance:none;outline:none;border:1px solid #2a3770;background:#0f1533;color:var(--text);
+      padding:12px 14px;border-radius:10px;font-size:14px;box-shadow:inset 0 0 0 999px rgba(255,255,255,0);
+      transition:.2s ease;min-width:260px
+    }
+    button{cursor:pointer;background:linear-gradient(180deg,#2a5cff,#1f49cc);border-color:#2b3f86}
+    button:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(32,96,255,.25)}
+    button:disabled{opacity:.6;cursor:not-allowed;transform:none;box-shadow:none}
+    .pill{padding:8px 12px;border:1px solid #203066;border-radius:999px;color:var(--muted);font-size:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:14px}
+    .voice{background:linear-gradient(180deg,#111735,#0e1431);border:1px solid #1b254d;border-radius:12px;padding:14px;display:flex;gap:12px}
+    .avatar{width:64px;height:64px;border-radius:12px;background:#0b1020;border:1px solid #223069;flex:0 0 auto;object-fit:cover}
+    .vhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .name{color:var(--text);font-weight:600}
+    .gender{color:var(--muted);font-size:12px}
+    .meta{margin-top:6px}
+    .kv{display:flex;gap:8px;align-items:center;margin-top:6px}
+    .code{background:#0a1028;border:1px solid #223069;color:#cfe1ff;padding:8px 10px;border-radius:8px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:12px;overflow:auto;white-space:nowrap}
+    .link{color:var(--brand);text-decoration:none}
+    .bar{padding:14px 16px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;border-top:1px solid #1b254d}
+    .audio{width:100%;margin-top:8px;filter:drop-shadow(0 6px 16px rgba(0,0,0,.35))}
+    .copy{background:#152050;border:1px solid #2a3c7f;padding:6px 8px;border-radius:8px;color:#bcd1ff;font-size:12px;cursor:pointer}
+    .copy:hover{background:#1b2a66}
+    .empty{padding:26px;text-align:center;color:var(--muted)}
+    .badge{background:#10223f;color:#9cc3ff;border:1px solid #2556b0;border-radius:999px;padding:4px 10px;font-size:11px}
+    .error{color:#ffd9d9}
+    .spinner{width:20px;height:20px;border:3px solid rgba(255,255,255,.2);border-top-color:#8ab6ff;border-radius:50%;animation:spin 1s linear infinite;margin-left:8px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .footer{color:#7482a9;text-align:center;margin:18px 0 8px;font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="card">
+      <div>
+        <h1>🎙️ AirVoz Voice Browser</h1>
+        <div class="sub">Select a language, then fetch & explore voices. Copy <code>voice_id</code>, preview sample audio, and view avatar/sample URLs.</div>
+      </div>
+      <div class="row">
+        <select id="language">
+          <option value="">Select language…</option>
+          {% for item in languages %}
+            <option value="{{ item.locale }}">{{ item.language }} ({{ item.locale }})</option>
+          {% endfor %}
+        </select>
+        <button id="fetchBtn">🔍 Fetch Voices</button>
+        <span id="count" class="pill">0 voices</span>
+      </div>
+    </header>
+
+    <section id="content" class="card">
+      <div class="bar">
+        <div id="status">Ready</div>
+        <div id="spinner" class="spinner" style="display:none;"></div>
+      </div>
+      <div id="voices" class="grid"></div>
+      <div id="empty" class="empty" style="display:none;">No voices to show.</div>
+    </section>
+
+    <div class="footer">Made with ❤️ — fast, lightweight, and responsive.</div>
+  </div>
+
+  <script>
+    const el = (sel) => document.querySelector(sel);
+    const status = el("#status");
+    const spinner = el("#spinner");
+    const voicesGrid = el("#voices");
+    const empty = el("#empty");
+    const count = el("#count");
+    const fetchBtn = el("#fetchBtn");
+    const language = el("#language");
+
+    function setLoading(isLoading, msg="") {
+      status.textContent = msg || (isLoading ? "Fetching voices…" : "Ready");
+      spinner.style.display = isLoading ? "inline-block" : "none";
+      fetchBtn.disabled = isLoading;
+    }
+
+    function copyText(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        status.textContent = "✔ Copied!";
+        setTimeout(()=> status.textContent = "Ready", 1200);
+      }).catch(() => {
+        status.textContent = "⚠ Copy failed";
+      });
+    }
+
+    function voiceCard(v) {
+      const avatar = v.avatar_url ? v.avatar_url : "";
+      const sample = v.sample_url ? v.sample_url : "";
+
+      const imgHtml = avatar
+        ? `<img class="avatar" src="${avatar}" alt="avatar" onerror="this.src='data:image/svg+xml;utf8,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2264%22 height=%2264%22/&gt;';">`
+        : `<div class="avatar"></div>`;
+
+      const audioHtml = sample
+        ? `<audio class="audio" controls preload="none" src="${sample}"></audio>`
+        : `<div class="audio" style="opacity:.6;font-size:12px;color:#9fb1e8">No sample_url</div>`;
+
+      const styleText = v.style ? `<span class="badge">${v.style}</span>` : "";
+
+      const avatarLink = v.avatar_url ? `<a class="link" href="${v.avatar_url}" target="_blank" rel="noopener">avatar_url ↗</a>` : `<span class="link" style="opacity:.45">avatar_url — none</span>`;
+      const sampleLink = v.sample_url ? `<a class="link" href="${v.sample_url}" target="_blank" rel="noopener">sample_url ↗</a>` : `<span class="link" style="opacity:.45">sample_url — none</span>`;
+
+      return `
+        <div class="voice">
+          ${imgHtml}
+          <div style="flex:1">
+            <div class="vhead">
+              <div>
+                <div class="name">${v.name || "Unknown"}</div>
+                <div class="gender">${v.gender || "N/A"} ${v.locale ? " • " + v.locale : ""}</div>
+              </div>
+              ${styleText}
+            </div>
+
+            <div class="meta">
+              <div class="kv">
+                <div class="code" title="voice_id">${v.voice_id || ""}</div>
+                <button class="copy" onclick='copyText(${JSON.stringify(v.voice_id || "")})'>Copy ID</button>
+              </div>
+
+              <div class="kv">
+                <div class="code" style="flex:1;overflow:hidden;text-overflow:ellipsis" title="avatar_url">${v.avatar_url || ""}</div>
+                <button class="copy" onclick='copyText(${JSON.stringify(v.avatar_url || "")})'>Copy</button>
+                ${avatarLink}
+              </div>
+
+              <div class="kv">
+                <div class="code" style="flex:1;overflow:hidden;text-overflow:ellipsis" title="sample_url">${v.sample_url || ""}</div>
+                <button class="copy" onclick='copyText(${JSON.stringify(v.sample_url || "")})'>Copy</button>
+                ${sampleLink}
+              </div>
+            </div>
+
+            ${audioHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    async function fetchVoices() {
+      const locale = language.value.trim();
+      if (!locale) {
+        status.textContent = "Please select a language.";
+        return;
+      }
+      setLoading(true, `Fetching voices for ${locale}…`);
+      voicesGrid.innerHTML = "";
+      empty.style.display = "none";
+      count.textContent = "…";
+
+      try {
+        const res = await fetch(`/api/voices?locale=${encodeURIComponent(locale)}`);
+        const data = await res.json();
+
+        if (!data.ok) {
+          throw new Error(data.error || "Unknown error");
+        }
+
+        const voices = data.voices || [];
+        count.textContent = `${voices.length} voices`;
+        status.textContent = `✅ ${voices.length} voices loaded`;
+
+        if (voices.length === 0) {
+          empty.style.display = "block";
+          return;
+        }
+
+        voicesGrid.innerHTML = voices.map(voiceCard).join("");
+      } catch (err) {
+        status.innerHTML = `<span class="error">❌ ${err.message}</span>`;
+        empty.style.display = "block";
+        empty.textContent = "Failed to load voices.";
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchBtn.addEventListener("click", fetchVoices);
+  </script>
+</body>
+</html>
